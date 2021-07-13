@@ -43,8 +43,8 @@ Markdown==3.1.1
 MarkupSafe==1.1.1
 matplotlib==3.1.2
 mistune==0.8.4
-mkl-fft  #==1.0.15
-mkl-random  #==1.1.0
+#mkl-fft  #==1.0.15
+#mkl-random  #==1.1.0
 mkl-service==2.3.0
 more-itertools==8.0.2
 mpmath==1.1.0
@@ -69,6 +69,7 @@ Pygments==2.5.2
 pyparsing==2.4.6
 pyrsistent==0.15.6
 python-dateutil==2.8.1
+pytorch
 pytorchcv==0.0.53
 pytz==2019.3
 PyYAML==5.2
@@ -92,7 +93,7 @@ tensorflow-estimator==1.15.1
 termcolor==1.1.0
 terminado==0.8.3
 testpath==0.4.4
-torch==1.3.1
+#torch==1.3.1
 torchvision==0.4.2
 tornado==6.0.3
 tqdm==4.41.1
