@@ -2,23 +2,52 @@
 
 ## Weight Watcher  
 
-### Current Version / Release: 0.4.7
+Please see [our latest talk from the Sillicon Valley ACM meetup](https://www.youtube.com/watch?v=Tnafo6JVoJs)ca
+
+Join the [WeightWatcher.AI Slack Channel](https://join.slack.com/t/weightwatcherai/shared_invite/zt-1511mk1d2-OvauYoot8_gm_YKIRT381Q)
+
+For a deeper dive into the theory, see [our latest talk at ENS](https://youtu.be/xEuBwBj_Ov4)
+
+### Current Version / Release: 0.5.6
 
 **WeightWatcher**  (WW): is an open-source, diagnostic tool for analyzing Deep Neural Networks (DNN), without needing access to training or even test data. It can be used to:
 
 - analyze pre/trained pyTorch, Keras, DNN models (Conv2D and Dense layers)
-- inspect models that are difficult to train
-- gauge improvements in model performance
-- predict test accuracies across different models
+- monitor models, and the model layers,  to see if they are over-trained or over-parameterized
+- predict test accuracies across different models, with or without training data
 - detect potential problems when compressing or fine-tuning pretrained models
-- determine if a model has been overtrained, without looking at the test data
-- experimental support for intra-layer correlations
+- layer warning labels: over-trained; under-trained
 
+ad well several new experimental model transformations, including:
+
+- SVDSmoothing:  builds a model that can be used to predict test accuracies, but only with the training data.
+- SVDSharpness:  removes Correlation Traps, which arise from sub-optimal regularization pre-trained models.
+
+### Experimental / Most Recent version    0.5.6
+
+You may install the latest / Trunk from testpypi
+
+python3 -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple weightwatcher
+
+The testpypi version usually has the most recent updates, including experimental methods qnd bug fixes
 
 #### From Research to Production
 WeightWatcher is based on theoretical research (done injoint with UC Berkeley) into Why Deep Learning Works, based on our Theory of Heavy Tailed Self-Regularization (HT-SR).  It uses ideas from Random Matrix Theory (RMT), Statistical Mechanics, and Strongly Correlated Systems.
 
 More details and demos can be found on the [Calculated Content Blog](https://calculatedcontent.com/)
+
+#### Reproducing Old Results
+
+We strive to make all of our results 100% reproducible; this is not easy.
+
+To reproduce some older results, such as the Nature paper (which is actually 2 years old), use the **ww2x** option
+
+```sh
+watcher.analyze(..., ww2x=True, ...)
+```
+
+If you are unable to reproduce the results, please file a bug and I will try to address it.
+
 
 ## Installation 
 
@@ -55,11 +84,30 @@ and summary dict of generalization metrics
       'mp_softrank': 0.52}]
 ```
 
+### Tips for First Time Users (SEE BELOW)
+
 ### Layer Details: 
 
 WW computes several Scale and Shape metrics for each layer Weight matrix **W**, as described in our papers (see below)
 
 These are reported in a **details dataframe**,  including:
+
+### Generalization Metrics
+
+The goal of the WeightWatcher project is find generalization metrics that most accurately reflect observed test accuracies, across many different models and architectures, and both pre-trained and during training.
+
+[Our HTSR theory](https://jmlr.org/papers/volume22/20-410/20-410.pdf) says that well trained, well correlated layers should be signficantly different from the MP random bulk, and, even more specifically, be heavy tailed. There are different layer metrics in weightwatcher for this, including:
+
+- rand_distance:  the  distance in distribution from the randomized layer
+- alpha:  the slope of the tail of the ESD, on a log-log scale
+- alpha-hat:  a scale-adjusted form of alpha (similar to the alpha-shatten-Norm)
+- stable-rank:  a norm-adjusted measure of the scale of the ESD
+- num_spikes:  the number of spikes outside the MP bulk region
+- etc
+
+All of these attempt to measure how on-random and/or non-heavy-tailed the layer ESDs are.  
+
+
 
 #### Scale Metrics 
 
@@ -72,11 +120,22 @@ These are reported in a **details dataframe**,  including:
 #### Shape Metrics
 
  - PL exponent alpha: <img src="https://render.githubusercontent.com/render/math?math=\alpha">
+
+(advanced usage)
+ - TPL. (alpha and Lambda) Truncated Power Law Fit
+ - E_TPL: (alpha and Lambda). Extended Truncated Power Law Fit
  
 #### Scale-adjusted Shape Metrics
 
 - weighted alpha:  <img src="https://render.githubusercontent.com/render/math?math=\hat{\alpha}=\alpha\log_{10}\lambda_{max}">
 - log alpha norm (Shatten norm): <img src="https://render.githubusercontent.com/render/math?math=\log_{10}\Vert\mathbf{X}\Vert^{\alpha}_{\alpha}">
+
+#### Direct Correlation Metrics 
+
+  The rand_distance metrics is a new, non-parameteric approach that appears to work well in early testing.
+ [See this recent blog post](https://calculatedcontent.com/2021/10/17/fantastic-measures-of-generalization-that-actually-work-part-1/)
+
+- rand_distance: <img src="https://render.githubusercontent.com/render/math?math=div(\mathbf{W},rand(\mathbf{W}))">   Distance of layer ESD from the ideal RMT MP ESD
 
 #### Misc Details
 
@@ -110,7 +169,7 @@ The watcher object has several functions and analyze features described below
 
 ```python
 analyze( model=None, layers=[], min_evals=0, max_evals=None,
-	 plot=True, randomize=True, mp_fit=True, ww2x=False, savefig=True, rescale=True):
+	 plot=True, randomize=True, mp_fit=True, ww2x=False, savefig=True):
 ...
 describe(self, model=None, layers=[], min_evals=0, max_evals=None,
          plot=True, randomize=True, mp_fit=True, ww2x=False):
@@ -134,16 +193,9 @@ For each layer, Weightwatcher plots the ESD--a histogram of the eigenvalues of t
 
 ![ESD](ESD-plots.png)
 
-#### Rescaling (new in ww0.4.7)
-
-<pre>analyze(..., rescale=True)</pre>
-
-Note that to perform the RMT / MP fits, the ESD (eigenvalues) are rescaled $dfrac{N}/{\Vert\mathbf{W}\Vert_{F}^{2}}$.  
-This rescaling is **not** used, however, to compute any (scale-dependent) metrics.
-
-To plot the original ESD, set rescale=False
-
 ### Detecting OverTraining
+Note: This is experimental but we have seen some success here
+
 Weightwatcher can detect the signatures of overtraining in specific layers of a pre/trained Deep Neural Networks.
 
 #### Early stopping
@@ -183,6 +235,8 @@ Our Theory of HT-SR predicts that models with smaller PL exponents **alpha** , o
 The WW summary metric **alpha** (**&alpha;**) can predict the generalization **&Delta;** error when varying the model hyperparmeters **&theta;** (like batch size, learning rate, momentum, etc)
 
  - PL exponent alpha: <img src="https://render.githubusercontent.com/render/math?math=\langle\alpha\rangle\sim\Delta(\theta)">
+ - TPL exponent alpha, and decay term Lambda
+ - E_TPL exponent alpha, and decay term Lambda
 
 whereas the summary metric **weighed alpha** can predict the generalization error **&Delta;**  when varying hyperparmeters **&theta;**  and depth **L**
  
@@ -195,6 +249,25 @@ Here is an example of the **Weighted Alpha** capacity metric for all the current
 This can be reppduced with the [Demo Notebook](https://github.com/CalculatedContent/WeightWatcher/blob/master/WeightWatcher-VGG.ipynb)
 
 Notice: we *did not peek* at the ImageNet test data to build this plot.
+
+**See also the recent rand_distance metric.**
+
+
+### SVDSmoothing and SVDSharpness Transforms 
+#### As descibed in our latest paper
+
+Smoothed models can be used to predict test accuracies, by evaluating the training accuracy on the smoothed model.
+```python
+smoothed_model = watcher.SVDSmoothing(model=...)
+```
+
+
+Sharpened models can be used when fine-tuning pre-trained models that have not been fully optimized yet.
+```python
+sharpemed_model = watcher.SVDSharpness(model=...)
+```
+
+Sample notebooks are provided for each new feature
 
 ### Additional Features
 
@@ -222,6 +295,23 @@ Setting max is useful for a quick debugging.
 ```python
 details = watcher.analyze(min_evals=50, max_evals=500)
 ```
+
+#### change the Power Law fitting proceedure
+
+To replicate results using TPL or E_TPL fits, use:
+
+```python
+details = watcher.analyze(fit='PL'|'TPL'|'E_TPL')
+```
+
+The details dataframe will now contain 2 quality metrics, and for each layer:
+- alpha: basically (but not exactly) the same PL exponent as before, useful for alpha > 2
+- Lambda, a new metric, now useful when the (TPL) alpha < 2.
+
+(The TPL fits correct a problem we have had when the PL fits over-estimate alpha for TPL layers)
+
+As with the alpha metric, smaller Lambda implies better generalization.
+
 
 #### fit ESDs to a Marchenko-Pastur (MP) distrbution
 
@@ -310,6 +400,21 @@ ww.layer#.esd4.png
   (Theoretical_CDF * (1 - Theoretical_CDF))
 </pre>
 
+### Tips for First Time Users
+
+On using weightwatcher for the first time.  I recommend selecting at least 1 trained  model, and running weightwatcher with all analyze options on, including the plots,  to see
+- if the layers ESDs are well formed and heavy tailed
+- if any layers are nearly random, indicating they are not well trained
+- if all the power law a fits look reasonable, and xmin is small enough that the fit captures a good part of the tail of the ESD
+
+Moreover, the Power Laws fits, and the alpha fit, only work well when the ESDs are both heavy tailed, *and*( can be easily fit to a single power law.
+But sometimes the power law / alpha fits don't work.  This happens when
+- the ESD is random, not heavy tailed.  Here, alpha > 8 or larger.
+- the ESD is multimodal (rare, but does occur)
+- the ESD is heavy tailed, but not well described by a single power law.  In these cases , sometimes alpha only fits the the very last part of the tail, and is too large. This is easily seen on the Lin-Lin plots
+
+In any of these cases, I usually throw away alphas > 8 because they are spurious./. If you suspect your layers are undertrained, you have to look both at alpha and a plot of the ESD itself (to see if it is heavy tailed or just random-like)
+
 ### Demo Notebooks
 
 [Basic Usage](https://github.com/CalculatedContent/WeightWatcher/blob/master/WeightWatcher.ipynb)
@@ -355,7 +460,9 @@ This tool is based on state-of-the-art research done in collaboration with UC Be
 
 #### Latest papers and talks
 
-- [(Latest Submission) Post-mortem on a deep learning contest: a Simpson's paradox and the complementary roles of scale metrics versus shape metrics](https://arxiv.org/abs/2106.00734)
+- [Post-mortem on a deep learning contest: a Simpson's paradox and the complementary roles of scale metrics versus shape metrics](https://arxiv.org/abs/2106.00734)
+
+- [Evaluating natural language processing models with robust generalization metrics that do not need access to any training or testing data](https://arxiv.org/abs/2202.02842)
 
 - [(Nature paper) Predicting trends in the quality of state-of-the-art neural networks without access to training or testing data](https://www.nature.com/articles/s41467-021-24025-8)
 
@@ -373,6 +480,7 @@ This tool is based on state-of-the-art research done in collaboration with UC Be
 
   - Notebook for paper (https://github.com/CalculatedContent/PredictingTestAccuracies)
 
+- [Rethinking generalization requires revisiting old ideas: statistical mechanics approaches and complex learning behavior](https://arxiv.org/abs/1710.09553)
 ---
 and has been presented at Stanford, UC Berkeley, etc:
 
@@ -409,11 +517,20 @@ and has been the subject  many popular podcasts
 
 - [LightOn AI Meetup](https://www.youtube.com/watch?v=tciq7t3rj98)
 
+- [our latest talk from the Sillicon Valley ACM meetup](https://www.youtube.com/watch?v=Tnafo6JVoJs)
+
+- [Applied AI Community](https://www.youtube.com/watch?v=xLZOf2IDLkc&feature=youtu.be)
+
+
 #### 2021 Short Presentations
 
 [MLC Research Jam  March 2021](presentations/ww_5min_talk.pdf)
 
 [PyTorch2021 Poster  April 2021](presentations/pytorch2021_poster.pdf)
+
+#### Recent talk(s) by Mike Mahoney, UC Berekely
+
+[IARAI, the Institute for Advanced Research in Artificial Intelligence](https://www.youtube.com/watch?v=Pirni67ZmRQ)
 
 
 ## Slack Channel

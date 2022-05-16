@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import sys
+import sys, os
 import pickle, time
 from copy import deepcopy
 from shutil import copy
@@ -151,7 +151,7 @@ def get_shuffled_eigenvalues(W, layer=7, num=100):
 
 def plot_density_and_fit(eigenvalues=None, model=None, layer_name="", layer_id=0,
                      Q=1.0, num_spikes=0, sigma=None,
-                     alpha=0.25, color='blue', skip=False, verbose=True, plot=True):
+                     alpha=0.25, color='blue', skip=False, verbose=True, plot=True, cutoff=0.0):
     """Plot histogram of eigenvalues, for Q, and fit Marchenk Pastur.  
     If no sigma, calculates from maximum eigenvalue (minus spikes)
     Can read keras weights from model if specified.  Does not read PyTorch
@@ -163,6 +163,7 @@ def plot_density_and_fit(eigenvalues=None, model=None, layer_name="", layer_id=0
    
     if Q == 1:
         to_fit = np.sqrt(eigenvalues)
+        cutoff = np.sqrt(cutoff)
         label = r"$\rho_{emp}(\nu)$"
         title = " W{} SSD, QC Sigma={:0.3}" 
     else:
@@ -173,6 +174,9 @@ def plot_density_and_fit(eigenvalues=None, model=None, layer_name="", layer_id=0
     if plot:
         plt.hist(to_fit, bins=100, alpha=alpha, color=color, density=True, label=label);
         plt.legend()
+        
+        if cutoff > 0.0:
+            plt.axvline(x=cutoff, linewidth=1, color='r', ls='dashed')
     
     if skip:
         return
@@ -206,7 +210,7 @@ def plot_density_and_fit(eigenvalues=None, model=None, layer_name="", layer_id=0
     return sigma
 
 
-def plot_density(to_plot, sigma, Q, method="MP", color='blue'):
+def plot_density(to_plot, sigma, Q, method="MP", color='blue', cutoff=0.0):
     """Method = 'MP' or 'QC'
     
     """
@@ -216,6 +220,7 @@ def plot_density(to_plot, sigma, Q, method="MP", color='blue'):
         x_min, x_max = 0, np.max(to_plot)
         x, y = marchenko_pastur_pdf(x_min, x_max, Q, sigma)
     elif method == "QC":
+        cutoff = np.sqrt(cutoff)
         to_plot = np.sort(to_plot)
         x_min, x_max = 0, np.max(to_plot)
         x, y = quarter_circle_pdf(x_min, x_max, sigma)
@@ -223,6 +228,9 @@ def plot_density(to_plot, sigma, Q, method="MP", color='blue'):
     plt.hist(to_plot, bins=100, alpha=0.6, color=color, density=True, label="ead")
     plt.plot(x, y, linewidth=1, color='r', label = method + " fit")
     plt.legend()
+    
+    if cutoff > 0.0:
+        plt.axvline(x=cutoff, linewidth=1, color='r', ls='dashed')
     
     return None
 
@@ -459,8 +467,9 @@ def resid_mp(p, evals, Q, bw, allresid=True, num_spikes=0, debug=False):
         # MP fit for this sigma
         xmp, ymp, a, b = marchenko_pastur_fun(xde, Q=Q, sigma=sigma)
 
-        if (b > max(xde)) | (a > xde[np.where(yde == max(yde))][0]) | (sigma > 1):
-            # print(xde[np.where(yde == max(yde))])
+        ### issue #60  change if statement
+        #if (b > max(xde)) | (a > xde[np.where(yde == max(yde))][0]) | (sigma > 1):
+        if (b < xde[np.where(yde == max(yde))][0] ) | (b > max(xde)) | (a > xde[np.where(yde == max(yde))][0]):
             resid = np.zeros(len(yde)) + 1000
         else:
             # form residual, remove nan's 
@@ -471,7 +480,7 @@ def resid_mp(p, evals, Q, bw, allresid=True, num_spikes=0, debug=False):
         plt.plot(xde, yde, color='cyan')
         plt.plot(xmp, ymp, color='orange')
         plt.axhline(y=THRESH)
-        plt.show()
+        plt.show(); plt.clf()
         print("sigma {}  mean residual {}".format(sigma, np.mean(resid)))
 
     # hack to try to fix fits
@@ -516,10 +525,15 @@ def fit_density(evals, Q, bw=0.1, sigma0=None):
 
 
 def fit_density_with_range(evals, Q, bw=0.1, sigma_range=(slice(0.1, 1.25, 0.01),) ):
-    
     assert type(sigma_range) == tuple, ValueError("sigma_range must be tuple")
     assert type(sigma_range[0]) == slice
-    
+
+    ### issue #60 fix
+    #   reset sigma range
+    sigma_scaling_factor = calc_sigma(Q, evals)
+    sigma_range = (slice(0.05 * sigma_scaling_factor, 2.0 * sigma_scaling_factor, 0.01 * sigma_scaling_factor),)
+    #
+    ###
 
     if Q == 1:
         to_fit = np.sqrt(evals)
@@ -556,3 +570,115 @@ def plot_loghist(x, bins, xmin):
 
     plt.xscale('log')
     
+    
+def permute_matrix(W):
+    """permute a matrix in a reversible way"""
+    
+    num_params = np.prod(W.shape)
+    vec = W.reshape(num_params)
+    p_ids = np.random.permutation(np.arange(num_params))
+    p_vec = vec[p_ids]
+    p_W = p_vec.reshape(W.shape)
+            
+    return p_W, p_ids
+
+
+def unpermute_matrix(W, p_ids):
+    """unpermute a matrix, using the original ids to permute it"""
+    
+    num_params = np.prod(W.shape)
+    vec = W.reshape(num_params)
+    unp_ids = np.argsort(p_ids)
+    unp_vec = vec[unp_ids]
+    unp_W = unp_vec.reshape(W.shape)
+    
+    return unp_W
+
+
+def save_fig(plt, figname, layer_id, savedir):
+    """Save the figure to the savedir directory. 
+       If directory is not present, create it
+       """
+    
+    figname = "{}/ww.layer{}.{}.png".format(savedir, layer_id, figname)
+    if not os.path.isdir(savedir):
+        os.mkdir(savedir)
+    plt.savefig(figname)
+    return 
+
+#TODO:
+# check alpha is decreasing
+def fit_clipped_powerlaw(evals, xmin=None, verbose=False, min_alpha=5.0):
+    """Fits a powerlaw only, not a truncated power law
+       clips off the max evals until a powerlaw is found, or stops half-way into the ESD
+       
+       Used to remove power-law tail fingers, which may result from finite size effects
+       
+       Assumes eval are in sort order
+       
+       Does not allow alpha to increase; only activates if alpha < min_alpha """
+       
+    assert(evals[-1]> evals[0])  
+    N = int(len(evals)/4)
+    xmax = np.max(evals)
+    if xmin is not None and xmin != -1:
+        prev_fit = powerlaw.Fit(evals, xmin=xmin, xmax=xmax, verbose=verbose)
+    else:
+        prev_fit = powerlaw.Fit(evals, xmax=xmax, verbose=verbose)
+        
+    prev_alpha = prev_fit.alpha
+    first_fit = prev_fit
+    
+    for idx in range(1,N):
+        xmax = np.max(evals[-idx])
+         
+        if xmin is not None and xmin != -1:
+            fit = powerlaw.Fit(evals, xmin=xmin, xmax=xmax, verbose=verbose)
+        else:
+            fit = powerlaw.Fit(evals, xmax=xmax, verbose=verbose)
+            
+        print("fit alpha",fit.alpha)  
+        
+        if fit.alpha > prev_alpha:
+            fit = prev_fit
+            break
+        
+        if fit.alpha <= min_alpha: 
+            print("stopping")  
+            break
+        
+        # stop when distribution becomes power law
+        R, p = fit.distribution_compare('truncated_power_law', 'power_law', normalized_ratio=True)
+        if R > 0.0:
+            break
+        
+        prev_fit = fit
+        prev_alpha = fit.alpha
+            
+    if idx == N:
+        fit = first_fit
+     
+    return fit
+             
+        
+# https://medium.com/@sourcedexter/how-to-find-the-similarity-between-two-probability-distributions-using-python-a7546e90a08d
+def jensen_shannon_distance(p, q):
+    """
+    method to compute the Jenson-Shannon Distance 
+    between two probability distributions
+    """
+
+    # convert the vectors into numpy arrays in case that they aren't
+    p = np.array(p)
+    q = np.array(q)
+
+    # calculate m
+    m = (p + q) / 2
+
+    # compute Jensen Shannon Divergence
+    divergence = (sp.stats.entropy(p, m) + sp.stats.entropy(q, m)) / 2
+
+    # compute the Jensen Shannon Distance
+    distance = np.sqrt(divergence)
+
+    return distance

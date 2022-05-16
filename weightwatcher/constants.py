@@ -15,9 +15,55 @@
 from enum import IntFlag, auto, Enum
 
 
+MAX_NUM_EVALS = 50000
+MIN_NUM_EVALS = 3
+
+DEF_SAVE_DIR = 'ww-img'
+
+
+TRUNCATED_SVD = 'truncated_svd'
+FULL_SVD = 'full_svd'
+
+# fi_ fingers options
+XMIN_PEAK = 'xmin_peak'
+CLIP_XMAX = 'clip_xmax'
+
+SVD = 'svd' # TruncatedSVD for Smoothing
+RMT = 'rmt' # pyRMT / RIE
+
+PL = 'PL'
+TPL = 'TPL'
+E_TPL = 'E_TPL' #extended power law
+TRUNCATED_POWER_LAW = 'truncated_power_law'
+POWER_LAW = 'power_law'
+LOG_NORMAL = 'lognormal'
+EXPONENTIAL = 'exponential'
+    
+# STATUSes
+
+SUCCESS = 'success'
+FAILED = 'failed'
+OVER_TRAINED = 'over-traoined'
+UNDER_TRAINED = 'under-trained'
+
+UNKNOWN = 'unknown'
+
+SPARSIFY = 'sparsify'
+
+DEFAULT_PARAMS = {'glorot_fix': False, 'normalize':False, 'conv2d_norm':True, 'randomize': True, 
+                  'savedir':DEF_SAVE_DIR, 'savefig':True, 'rescale':True, 'plot':False,
+                  'deltaEs':False, 'intra':False, 'channels':None, 'conv2d_fft':False, 
+                  'ww2x':False, 'vectors':False, 'smooth':None, 'stacked':False, 
+                  'svd_method':FULL_SVD,  'fix_fingers':None, 'fit':POWER_LAW, SPARSIFY: True}
+
+
+
+
+EVALS_THRESH = 0.00001
+
 class LAYER_TYPE(IntFlag):
     UNKNOWN = auto()
-    COMBINED = auto()
+    STACKED = auto()
     DENSE = auto()
     CONV1D = auto()
     CONV2D = auto()
@@ -59,12 +105,11 @@ class METRICS():
     MATRIX_ENTROPY = "entropy"
 
 
-
+# XMAX, XMIN not really used
     
 class XMAX(IntFlag):
     UNKNOWN = auto()
     AUTO = auto()
-    PEAK = auto()
 
 
 class XMIN(IntFlag):
